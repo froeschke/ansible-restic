@@ -1,0 +1,12 @@
+---
+- name: Configure Restic backups
+  hosts: backup_hosts
+  become: true
+  vars:
+    restic_repository: /srv/restic-repository
+    restic_password: "{{ vault_restic_password }}"
+    restic_paths:
+      - /etc/hosts
+    restic_forget_timer_enabled: false
+  roles:
+    - role: restic_backup

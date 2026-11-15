@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository={{ restic_primary_repository_effective | quote }}
+if [[ "${1:-}" == "--repository" ]]; then
+  if [[ $# -lt 2 ]]; then
+    echo "restic-run: --repository requires a repository name" >&2
+    exit 2
+  fi
+  repository="$2"
+  shift 2
+fi
+
+case "$repository" in
+{% for repo in restic_repositories_effective %}
+  {{ repo.name | quote }})
+    env_file={{ repo.env_file | quote }}
+    args=(--cache-dir {{ (restic_cache_dir ~ '/' ~ repo.name) | quote }} --compression {{ repo.compression | quote }})
+{% if repo.cacert | length > 0 %}
+    args+=(--cacert {{ repo.cacert | quote }})
+{% endif %}
+{% if repo.repository.startswith('s3:') %}{% if repo.s3_bucket_lookup | length > 0 %}    args+=("-o" {{ ('s3.bucket-lookup=' ~ repo.s3_bucket_lookup) | quote }})
+{% endif %}{% if repo.s3_region | length > 0 %}    args+=("-o" {{ ('s3.region=' ~ repo.s3_region) | quote }})
+{% endif %}{% for key, value in repo.s3_options.items() %}    args+=("-o" {{ ('s3.' ~ key ~ '=' ~ value) | quote }})
+{% endfor %}{% endif %}    ;;
+{% endfor %}
+  *)
+    echo "restic-run: unknown repository: $repository" >&2
+    exit 2
+    ;;
+esac
+
+set -a
+# shellcheck disable=SC1090
+source "$env_file"
+set +a
+
+exec {{ '/usr/bin/restic' if restic_package_name == 'restic' else 'restic' }} "${args[@]}" "$@"

@@ -1,0 +1,104 @@
+---
+argument_specs:
+  main:
+    short_description: Configure encrypted Restic backups to S3/S3-compatible storage.
+    options:
+      restic_backup_state:
+        type: str
+        choices: [present, absent]
+        default: present
+      restic_remove_package:
+        type: bool
+        default: false
+      restic_repositories:
+        no_log: true
+        type: list
+        elements: dict
+        default: []
+      restic_repository_mode:
+        type: str
+        choices: [direct, copy]
+        default: direct
+      restic_primary_repository:
+        type: str
+        default: ""
+      restic_copy_extra_args:
+        type: list
+        elements: str
+        default: []
+      restic_repository:
+        no_log: true
+        type: str
+        default: ""
+      restic_s3_endpoint:
+        type: str
+        default: ""
+      restic_s3_bucket:
+        type: str
+        default: ""
+      restic_s3_prefix:
+        type: str
+        default: ""
+      restic_s3_access_key:
+        no_log: true
+        type: str
+        default: ""
+      restic_s3_secret_key:
+        no_log: true
+        type: str
+        default: ""
+      restic_password:
+        no_log: true
+        type: str
+        default: ""
+      restic_compression:
+        type: str
+        choices: [auto, "off", fastest, better, max]
+        default: auto
+      restic_paths:
+        type: list
+        elements: str
+        default: []
+      restic_excludes:
+        type: list
+        elements: str
+        default: []
+      restic_progress:
+        type: bool
+        default: true
+      restic_progress_interval:
+        type: int
+        default: 30
+      restic_docker_volumes:
+        type: list
+        elements: str
+        default: []
+      restic_containers:
+        type: list
+        elements: dict
+        default: []
+      restic_databases:
+        no_log: true
+        type: list
+        elements: dict
+        default: []
+      restic_pre_backup_commands:
+        type: list
+        elements: str
+        default: []
+      restic_pre_snapshot_commands:
+        type: list
+        elements: str
+        default: []
+      restic_post_backup_commands:
+        type: list
+        elements: str
+        default: []
+      restic_failed_backup_commands:
+        type: list
+        elements: str
+        default: []
+      restic_finish_backup_commands:
+        type: list
+        elements: str
+        default: []

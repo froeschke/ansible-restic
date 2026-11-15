@@ -1,0 +1,13 @@
+---
+restic_internal_repositories_dir: "{{ restic_config_dir }}/repositories"
+restic_internal_config_file: "{{ restic_config_dir }}/config.json"
+restic_internal_wrapper: /usr/local/sbin/restic-run
+restic_internal_orchestrator: /usr/local/sbin/restic-backup
+restic_internal_lock_file: /run/lock/restic-backup.lock
+restic_internal_units:
+  - restic-backup.timer
+  - restic-forget.timer
+  - restic-check.timer
+  - restic-backup.service
+  - restic-forget.service
+  - restic-check.service

@@ -1,0 +1,15 @@
+[Unit]
+Description=Restic backup
+After=network-online.target docker.service
+Wants=network-online.target
+{% if restic_on_failure_unit | length > 0 %}
+OnFailure={{ restic_on_failure_unit }}
+{% endif %}
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart={{ restic_internal_orchestrator }} --config {{ restic_internal_config_file | replace('%', '%%') | replace('$', '$$') | to_json(ensure_ascii=False) }} backup
+Nice={{ restic_nice }}
+IOSchedulingClass={{ restic_io_scheduling_class }}
+IOSchedulingPriority={{ restic_io_scheduling_priority }}

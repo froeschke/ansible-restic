@@ -1,0 +1,11 @@
+[Unit]
+Description=Scheduled Restic retention/prune
+
+[Timer]
+OnCalendar={{ restic_forget_on_calendar }}
+RandomizedDelaySec={{ restic_forget_randomized_delay_sec }}
+Persistent={{ restic_backup_persistent | bool | ternary('true', 'false') }}
+Unit=restic-forget.service
+
+[Install]
+WantedBy=timers.target

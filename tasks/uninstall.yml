@@ -1,0 +1,63 @@
+---
+- name: Check for installed restic systemd units
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  loop: "{{ restic_internal_units }}"
+  register: restic_uninstall_units
+
+- name: Stop and disable installed restic timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ restic_uninstall_units.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.item.endswith('.timer')
+    - item.stat.exists
+
+- name: Stop installed restic services
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: stopped
+  loop: "{{ restic_uninstall_units.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.item.endswith('.service')
+    - item.stat.exists
+
+- name: Remove restic systemd unit files
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop: "{{ restic_internal_units }}"
+  notify: Reload systemd for restic
+
+- name: Remove restic role-managed executables
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ restic_internal_wrapper }}"
+    - "{{ restic_internal_orchestrator }}"
+    - "{{ restic_internal_lock_file }}"
+
+- name: Remove restic role-managed local directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ restic_config_dir }}"
+    - "{{ restic_state_dir }}"
+    - "{{ restic_cache_dir }}"
+
+- name: Flush systemd reload before optional package removal
+  ansible.builtin.meta: flush_handlers
+
+- name: Remove restic package
+  ansible.builtin.package:
+    name: "{{ restic_package_name }}"
+    state: absent
+  when: restic_remove_package | bool

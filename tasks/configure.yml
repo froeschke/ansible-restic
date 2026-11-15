@@ -1,0 +1,187 @@
+---
+- name: Build repository input list from legacy settings
+  ansible.builtin.set_fact:
+    restic_repository_input: >-
+      {{
+        restic_repositories
+        if (restic_repositories | length > 0)
+        else [
+          {
+            'name': 'default',
+            'repository': restic_repository,
+            's3_endpoint': restic_s3_endpoint,
+            's3_bucket': restic_s3_bucket,
+            's3_prefix': restic_s3_prefix,
+            's3_region': restic_s3_region,
+            's3_bucket_lookup': restic_s3_bucket_lookup,
+            's3_access_key': restic_s3_access_key,
+            's3_secret_key': restic_s3_secret_key,
+            's3_session_token': restic_s3_session_token,
+            's3_options': restic_s3_options,
+            'cacert': restic_cacert,
+            'password': restic_password,
+            'compression': restic_compression
+          }
+        ]
+      }}
+  no_log: true
+
+- name: Initialize normalized repository list
+  ansible.builtin.set_fact:
+    restic_repositories_effective: []
+
+- name: Normalize repository definitions
+  ansible.builtin.set_fact:
+    restic_repositories_effective: >-
+      {{ restic_repositories_effective + [ {
+        'name': item.name,
+        'repository': (
+          item.repository
+          if (item.repository | default('') | length > 0)
+          else
+          's3:' ~ ((item.s3_endpoint | default(restic_s3_endpoint)) | regex_replace('/+$', '')) ~ '/' ~
+          (item.s3_bucket | default(restic_s3_bucket)) ~
+          (('/' ~ ((item.s3_prefix | default(restic_s3_prefix)) | regex_replace('^/+|/+$', '')))
+           if ((item.s3_prefix | default(restic_s3_prefix)) | length > 0) else '')
+        ),
+        's3_region': item.s3_region | default(restic_s3_region),
+        's3_bucket_lookup': item.s3_bucket_lookup | default(restic_s3_bucket_lookup),
+        's3_access_key': item.s3_access_key | default(restic_s3_access_key),
+        's3_secret_key': item.s3_secret_key | default(restic_s3_secret_key),
+        's3_session_token': item.s3_session_token | default(restic_s3_session_token),
+        's3_options': item.s3_options | default(restic_s3_options),
+        'cacert': item.cacert | default(restic_cacert),
+        'password': item.password | default(restic_password),
+        'compression': item.compression | default(restic_compression),
+        'password_file': restic_internal_repositories_dir ~ '/' ~ item.name ~ '.password',
+        'env_file': restic_internal_repositories_dir ~ '/' ~ item.name ~ '.env'
+      } ] }}
+  loop: "{{ restic_repository_input }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Initialize runtime repository list
+  ansible.builtin.set_fact:
+    restic_repositories_runtime: []
+
+- name: Build runtime repository list without backend credentials
+  ansible.builtin.set_fact:
+    restic_repositories_runtime: >-
+      {{ restic_repositories_runtime + [ {
+        'name': item.name,
+        'repository': item.repository,
+        'password_file': item.password_file
+      } ] }}
+  loop: "{{ restic_repositories_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Select effective primary repository
+  ansible.builtin.set_fact:
+    restic_primary_repository_effective: >-
+      {{
+        'default'
+        if (restic_repositories | length == 0)
+        else (restic_primary_repository if (restic_primary_repository | length > 0) else restic_repositories_effective[0].name)
+      }}
+
+- name: Resolve primary repository definition
+  ansible.builtin.set_fact:
+    restic_primary_repository_definition: >-
+      {{ (restic_repositories_effective | selectattr('name', 'equalto', restic_primary_repository_effective) | list | first) }}
+  no_log: true
+
+- name: Reject incompatible S3 credentials in copy mode
+  ansible.builtin.assert:
+    that:
+      - >-
+        item.s3_access_key == restic_primary_repository_definition.s3_access_key and
+        item.s3_secret_key == restic_primary_repository_definition.s3_secret_key and
+        item.s3_session_token == restic_primary_repository_definition.s3_session_token
+    fail_msg: >-
+      restic_repository_mode=copy cannot safely use different credentials for
+      two native s3: repositories because restic opens source and destination in
+      one process. Use direct mode, or use independent rclone: repository URLs.
+  loop: "{{ restic_repositories_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - restic_repository_mode == 'copy'
+    - item.name != restic_primary_repository_effective
+    - item.repository.startswith('s3:')
+    - restic_primary_repository_definition.repository.startswith('s3:')
+  no_log: true
+
+- name: Create restic directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ restic_config_dir }}", mode: "0700" }
+    - { path: "{{ restic_internal_repositories_dir }}", mode: "0700" }
+    - { path: "{{ restic_state_dir }}", mode: "0700" }
+    - { path: "{{ restic_cache_dir }}", mode: "0700" }
+
+- name: Remove legacy single-repository credential files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ restic_config_dir }}/restic.env"
+    - "{{ restic_config_dir }}/repository-password"
+
+- name: Install repository password files
+  ansible.builtin.copy:
+    content: "{{ item.password }}\n"
+    dest: "{{ item.password_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ restic_repositories_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Install repository environment files
+  ansible.builtin.template:
+    src: repository.env.j2
+    dest: "{{ item.env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ restic_repositories_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Install backup configuration
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ restic_internal_config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install restic wrapper
+  ansible.builtin.template:
+    src: restic-run.sh.j2
+    dest: "{{ restic_internal_wrapper }}"
+    owner: root
+    group: root
+    mode: "0700"
+    validate: /bin/bash -n %s
+  no_log: true
+
+- name: Install backup orchestrator
+  ansible.builtin.copy:
+    src: restic_backup.py
+    dest: "{{ restic_internal_orchestrator }}"
+    owner: root
+    group: root
+    mode: "0700"

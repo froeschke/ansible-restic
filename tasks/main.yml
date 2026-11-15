@@ -1,0 +1,31 @@
+---
+- name: Require systemd
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['service_mgr'] | default('') == 'systemd'
+    fail_msg: "This role requires systemd and gathered service manager facts."
+
+- name: Remove restic backup configuration
+  ansible.builtin.import_tasks: uninstall.yml
+  when: restic_backup_state == 'absent'
+
+- name: Configure restic backup
+  when: restic_backup_state == 'present'
+  block:
+    - name: Validate backup settings
+      ansible.builtin.import_tasks: validate.yml
+
+    - name: Install restic
+      ansible.builtin.import_tasks: install.yml
+
+    - name: Configure restic backup files
+      ansible.builtin.import_tasks: configure.yml
+
+    - name: Initialize restic repository
+      ansible.builtin.import_tasks: repository.yml
+      when:
+        - restic_initialize_repository | bool
+        - not ansible_check_mode
+
+    - name: Configure systemd timers
+      ansible.builtin.import_tasks: systemd.yml

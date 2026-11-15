@@ -1,0 +1,11 @@
+[Unit]
+Description=Scheduled Restic integrity check
+
+[Timer]
+OnCalendar={{ restic_check_on_calendar }}
+RandomizedDelaySec={{ restic_check_randomized_delay_sec }}
+Persistent={{ restic_backup_persistent | bool | ternary('true', 'false') }}
+Unit=restic-check.service
+
+[Install]
+WantedBy=timers.target

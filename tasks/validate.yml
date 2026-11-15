@@ -1,0 +1,101 @@
+---
+- name: Validate general backup settings
+  ansible.builtin.assert:
+    that:
+      - restic_repository_mode in ['direct', 'copy']
+      - restic_compression in ['auto', 'off', 'fastest', 'better', 'max']
+      - restic_s3_bucket_lookup in ['auto', 'path', 'dns']
+      - restic_missing_source_policy in ['fail', 'warn']
+      - restic_repository_version | int in [1, 2]
+      - restic_repository_version | int == 2 or restic_repositories | length > 0 or restic_compression == 'off'
+    fail_msg: >-
+      restic_repository_mode must be direct/copy and compression/S3/source
+      policy values must be valid. Compression modes other than off require v2.
+
+- name: Validate backup progress interval
+  ansible.builtin.assert:
+    that:
+      - restic_progress_interval | int > 0
+    fail_msg: "restic_progress_interval must be a positive number of seconds."
+
+- name: Validate snapshot hostname
+  ansible.builtin.assert:
+    that:
+      - restic_backup_host is string
+      - restic_backup_host | trim | length > 0
+    fail_msg: "restic_backup_host must be a non-empty hostname."
+
+- name: Validate legacy single repository settings
+  ansible.builtin.assert:
+    that:
+      - restic_password | length > 0
+      - >-
+        (restic_repository | length > 0) or
+        ((restic_s3_endpoint | length > 0) and (restic_s3_bucket | length > 0))
+    fail_msg: >-
+      Set restic_password and either restic_repository or S3 endpoint/bucket,
+      or configure restic_repositories.
+  when: restic_repositories | length == 0
+  no_log: true
+
+- name: Validate multi-repository definitions
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.name | length > 0
+      - item.name is match('^[A-Za-z0-9_.-]+\Z')
+      - item.name not in ['.', '..']
+      - >-
+        (item.repository | default('') | length > 0) or
+        (((item.s3_endpoint | default(restic_s3_endpoint)) | length > 0) and
+         ((item.s3_bucket | default(restic_s3_bucket)) | length > 0))
+      - (item.password | default(restic_password)) | length > 0
+      - (item.compression | default(restic_compression)) in ['auto', 'off', 'fastest', 'better', 'max']
+      - restic_repository_version | int == 2 or (item.compression | default(restic_compression)) == 'off'
+      - (item.s3_bucket_lookup | default(restic_s3_bucket_lookup)) in ['auto', 'path', 'dns']
+    fail_msg: >-
+      Each restic_repositories item needs a safe unique name, a repository URL
+      or S3 endpoint/bucket, a password (directly or globally), and valid options.
+  loop: "{{ restic_repositories }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+  no_log: true
+
+- name: Validate repository names are unique
+  ansible.builtin.assert:
+    that:
+      - (restic_repositories | map(attribute='name') | list | unique | length) == (restic_repositories | length)
+    fail_msg: "Repository names must be unique regardless of case."
+  when: restic_repositories | length > 0
+
+- name: Validate requested primary repository exists
+  ansible.builtin.assert:
+    that:
+      - >-
+        restic_primary_repository | length == 0 or
+        restic_primary_repository in (restic_repositories | map(attribute='name') | list)
+    fail_msg: "restic_primary_repository must name an item in restic_repositories."
+  when: restic_repositories | length > 0
+
+- name: Validate container definitions
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - (item.quiesce | default('none')) in ['none', 'pause', 'stop']
+    fail_msg: "Each restic_containers item needs name and a valid quiesce mode."
+  loop: "{{ restic_containers }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+
+- name: Validate database definitions
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.engine is defined
+      - item.engine in ['postgresql', 'mysql', 'mariadb', 'mongodb', 'custom']
+      - item.engine != 'custom' or item.command is defined
+    fail_msg: "Each database needs name/engine; custom databases also need command."
+  loop: "{{ restic_databases }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+  no_log: true

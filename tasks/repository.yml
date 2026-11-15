@@ -1,0 +1,82 @@
+---
+# Restic owns repository initialization and backend error reporting.
+- name: Probe all restic repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ restic_internal_wrapper }}"
+      - --repository
+      - "{{ item }}"
+      - --no-lock
+      - cat
+      - config
+  loop: "{{ restic_repositories_effective | map(attribute='name') | list }}"
+  register: restic_repository_probes
+  changed_when: false
+  # Restic before 0.17 reports a missing config as a generic failure.
+  failed_when: >-
+    restic_repository_probes.rc not in [0, 10] and not (
+      restic_repository_probes.rc == 1 and
+      restic_repository_probes.stderr is search(restic_legacy_missing_config)
+    )
+  vars:
+    restic_legacy_missing_config: >-
+      (?m)^Fatal: unable to open config file: .*(: no such file or directory|The specified key does not exist[.]?|HTTP response \d+: 404 Not Found)$
+  no_log: true
+
+- name: Initialize primary repository
+  ansible.builtin.command:
+    argv:
+      - "{{ restic_internal_wrapper }}"
+      - --repository
+      - "{{ restic_primary_repository_effective }}"
+      - init
+      - "--repository-version={{ restic_repository_version }}"
+  when:
+    - item.item == restic_primary_repository_effective
+    - item.rc != 0
+  loop: "{{ restic_repository_probes.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  changed_when: true
+  no_log: true
+
+- name: Initialize direct-mode secondary repositories
+  ansible.builtin.command:
+    argv:
+      - "{{ restic_internal_wrapper }}"
+      - --repository
+      - "{{ item.item }}"
+      - init
+      - "--repository-version={{ restic_repository_version }}"
+  when:
+    - restic_repository_mode == 'direct'
+    - item.item != restic_primary_repository_effective
+    - item.rc != 0
+  loop: "{{ restic_repository_probes.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  changed_when: true
+  no_log: true
+
+- name: Initialize copy-mode secondary repositories with primary chunker parameters
+  ansible.builtin.command:
+    argv:
+      - "{{ restic_internal_wrapper }}"
+      - --repository
+      - "{{ item.item }}"
+      - init
+      - "--repository-version={{ restic_repository_version }}"
+      - --from-repo
+      - "{{ restic_primary_repository_definition.repository }}"
+      - --from-password-file
+      - "{{ restic_primary_repository_definition.password_file }}"
+      - --copy-chunker-params
+  when:
+    - restic_repository_mode == 'copy'
+    - item.item != restic_primary_repository_effective
+    - item.rc != 0
+  loop: "{{ restic_repository_probes.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  changed_when: true
+  no_log: true

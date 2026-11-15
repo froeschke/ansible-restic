@@ -1,0 +1,38 @@
+---
+- name: Smoke-test legacy single repository variable parsing
+  hosts: localhost
+  become: true
+  gather_facts: true
+  vars:
+    restic_initialize_repository: false
+    restic_backup_timer_enabled: false
+    restic_forget_timer_enabled: false
+    restic_check_timer_enabled: false
+    restic_repository: /tmp/restic-test-repository
+    restic_password: test-only-password
+    restic_paths:
+      - /etc/hosts
+  roles:
+    - role: restic_backup
+
+- name: Smoke-test multi-repository variable parsing
+  hosts: localhost
+  become: true
+  gather_facts: true
+  vars:
+    restic_initialize_repository: false
+    restic_backup_timer_enabled: false
+    restic_forget_timer_enabled: false
+    restic_check_timer_enabled: false
+    restic_password: test-only-password
+    restic_repository_mode: direct
+    restic_primary_repository: primary
+    restic_repositories:
+      - name: primary
+        repository: /tmp/restic-test-primary
+      - name: secondary
+        repository: /tmp/restic-test-secondary
+    restic_paths:
+      - /etc/hosts
+  roles:
+    - role: restic_backup

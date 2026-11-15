@@ -1,0 +1,170 @@
+---
+# Lifecycle. `absent` removes only local role-managed configuration/services.
+# It never deletes or modifies the remote Restic repository.
+restic_backup_state: present  # present | absent
+restic_remove_package: false
+
+# Installation
+restic_package_name: restic
+restic_extra_packages: []
+
+# Multiple repositories. When this list is empty, the legacy single-repository
+# variables below are used and remain fully supported. Each repository item may
+# override: repository, s3_endpoint, s3_bucket, s3_prefix, s3_region,
+# s3_bucket_lookup, s3_access_key, s3_secret_key, s3_session_token, s3_options,
+# cacert, password, and compression.
+#
+# direct: read the backup sources once per repository and create an independent
+#         snapshot in every repository.
+# copy:   create a snapshot only in the primary repository, then use
+#         `restic copy` to replicate snapshots to every secondary repository.
+restic_repositories: []
+restic_repository_mode: direct  # direct | copy
+restic_primary_repository: ""   # empty = first configured repository
+restic_copy_extra_args: []
+
+# Repository. Set restic_repository directly, or compose an S3 repository from
+# endpoint + bucket + optional prefix.
+restic_repository: ""
+restic_s3_endpoint: ""
+restic_s3_bucket: ""
+restic_s3_prefix: ""
+restic_s3_region: ""
+restic_s3_bucket_lookup: auto  # auto | path | dns
+restic_s3_access_key: ""
+restic_s3_secret_key: ""
+restic_s3_session_token: ""
+restic_s3_options: {}
+restic_cacert: ""
+
+# Restic always encrypts repositories. Keep this value in Ansible Vault.
+restic_password: ""
+restic_repository_version: 2
+restic_initialize_repository: true
+
+# Compression requires repository format v2.
+restic_compression: auto  # auto | off | fastest | better | max
+
+# Files and folders to back up. Individual files and directories are both valid.
+restic_paths: []
+restic_excludes: []
+restic_backup_host: "{{ inventory_hostname }}"
+restic_backup_tags: []
+restic_one_file_system: false
+restic_backup_extra_args: []
+restic_missing_source_policy: fail  # fail | warn
+restic_progress: true
+restic_progress_interval: 30  # seconds
+
+# Docker named volumes can be backed up directly even when not attached to a
+# configured container.
+restic_docker_volumes: []
+
+# Containers: captures docker inspect metadata and can include local bind/named
+# volume mount sources in the snapshot.
+# Example:
+# restic_containers:
+#   - name: myapp
+#     quiesce: pause        # none | pause | stop
+#     stop_timeout: 30
+#     include_metadata: true
+#     include_named_volumes: true
+#     include_bind_mounts: true
+restic_containers: []
+
+# Logical database dumps. Supported engines: postgresql, mysql, mariadb,
+# mongodb, custom. If container is set, the dump tool executes in that
+# container; otherwise it executes on the host.
+#
+# PostgreSQL example:
+#   - name: app-postgres
+#     engine: postgresql
+#     container: postgres
+#     database: app          # or "all"
+#     username: postgres
+#     environment:
+#       PGPASSWORD: "{{ vault_postgres_password }}"
+#
+# MySQL example (uses mysqldump):
+#   - name: app-mysql
+#     engine: mysql
+#     container: mysql
+#     database: app          # or "all"
+#     username: root
+#     environment:
+#       MYSQL_PWD: "{{ vault_mysql_password }}"
+#
+# MariaDB example (uses mariadb-dump):
+#   - name: app-mariadb
+#     engine: mariadb
+#     container: mariadb
+#     database: app          # or "all"
+#     username: root
+#     environment:
+#       MYSQL_PWD: "{{ vault_mariadb_password }}"
+#
+# MongoDB example. mongo_config is written as a protected mongodump --config
+# file so URI/password are not passed on the host command line.
+#   - name: app-mongo
+#     engine: mongodb
+#     container: mongodb
+#     database: app          # or "all"
+#     mongo_config:
+#       uri: "{{ vault_mongodb_uri }}"
+restic_databases: []
+
+# Root-owned lifecycle hooks. Each command runs through /bin/bash -lc.
+#
+# pre_backup: runs before database dumps and Docker/source discovery.
+# pre_snapshot: runs after all sources have been resolved, immediately before
+#               Restic reads them. This is the right phase for stopping Docker
+#               itself because Docker-based source discovery is already done.
+# post_backup: runs only after Restic successfully commits the snapshot.
+# failed_backup: runs when any backup phase fails or the job is interrupted.
+# finish_backup: always runs, including after failures/SIGTERM. Use this for
+#                 mandatory recovery such as starting Docker again.
+restic_pre_backup_commands: []
+restic_pre_snapshot_commands: []
+restic_post_backup_commands: []
+restic_failed_backup_commands: []
+restic_finish_backup_commands: []
+
+# Work directories
+restic_config_dir: /etc/restic-backup
+restic_state_dir: /var/lib/restic-backup
+restic_cache_dir: /var/cache/restic-backup
+restic_cleanup_staging: true
+
+# Scheduling
+restic_backup_on_calendar: "*-*-* 02:00:00"
+restic_backup_randomized_delay_sec: 15m
+restic_backup_persistent: true
+restic_backup_timer_enabled: true
+
+# Retention is run separately from backups to avoid making every backup wait
+# for prune. Set any value to null/empty to disable that retention dimension.
+restic_retention:
+  keep_last: null
+  keep_hourly: null
+  keep_daily: 7
+  keep_weekly: 4
+  keep_monthly: 12
+  keep_yearly: 3
+  keep_within: ""
+  group_by: "host,paths"
+restic_forget_on_calendar: "Sun *-*-* 04:00:00"
+restic_forget_randomized_delay_sec: 30m
+restic_forget_timer_enabled: true
+
+# Repository integrity checks. For very large repositories consider e.g.
+# ["--read-data-subset=5%"] and schedule a full check less frequently.
+restic_check_extra_args: []
+restic_check_on_calendar: "Sun *-*-* 05:30:00"
+restic_check_randomized_delay_sec: 30m
+restic_check_timer_enabled: true
+
+# systemd service tuning
+restic_nice: 10
+restic_io_scheduling_class: best-effort
+restic_io_scheduling_priority: 7
+restic_on_failure_unit: ""

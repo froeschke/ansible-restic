@@ -1,0 +1,52 @@
+---
+# Advanced example. Copy to host_vars/<inventory_hostname>.yml and adapt it.
+restic_backup_state: present
+restic_remove_package: false
+
+restic_password: "{{ vault_restic_password }}"
+restic_compression: auto
+
+# Multi-repository example. direct mode is appropriate for AWS + Backblaze when
+# each provider uses different S3 credentials.
+restic_repository_mode: direct
+restic_primary_repository: backblaze
+restic_repositories:
+  - name: backblaze
+    s3_endpoint: "https://s3.eu-central-003.backblazeb2.com"
+    s3_bucket: infrastructure-backups
+    s3_prefix: "{{ inventory_hostname }}"
+    s3_bucket_lookup: path
+    s3_access_key: "{{ vault_backblaze_key_id }}"
+    s3_secret_key: "{{ vault_backblaze_application_key }}"
+
+  - name: aws
+    s3_endpoint: "https://s3.eu-central-1.amazonaws.com"
+    s3_bucket: infrastructure-backups
+    s3_prefix: "{{ inventory_hostname }}"
+    s3_region: eu-central-1
+    s3_access_key: "{{ vault_aws_access_key }}"
+    s3_secret_key: "{{ vault_aws_secret_key }}"
+
+restic_paths:
+  - /etc
+  - /opt/docker
+  - /srv/app/uploads
+
+restic_excludes:
+  - "{{ restic_config_dir }}"
+
+restic_containers:
+  - name: app
+    quiesce: pause
+    include_metadata: true
+    include_named_volumes: true
+    include_bind_mounts: true
+
+restic_databases:
+  - name: app-postgres
+    engine: postgresql
+    container: postgres
+    database: app
+    username: postgres
+    environment:
+      PGPASSWORD: "{{ vault_postgres_password }}"

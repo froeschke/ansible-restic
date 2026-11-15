@@ -1,0 +1,38 @@
+---
+- name: Install restic systemd services
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ restic_internal_units | select('search', '[.]service$') | list }}"
+  notify:
+    - Reload systemd for restic
+
+- name: Install restic systemd timers
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ restic_internal_units | select('search', '[.]timer$') | list }}"
+  notify:
+    - Reload systemd for restic
+    - Restart changed restic timers
+  register: restic_timer_templates
+
+- name: Flush handlers before enabling timers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable or disable restic timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.name }}.timer"
+    enabled: "{{ item.enabled }}"
+    state: "{{ 'started' if item.enabled else 'stopped' }}"
+  loop:
+    - { name: restic-backup, enabled: "{{ restic_backup_timer_enabled | bool }}" }
+    - { name: restic-forget, enabled: "{{ restic_forget_timer_enabled | bool }}" }
+    - { name: restic-check, enabled: "{{ restic_check_timer_enabled | bool }}" }
+  when: not ansible_check_mode

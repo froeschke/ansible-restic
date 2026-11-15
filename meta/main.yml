@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  namespace: froeschke
+  role_name: restic_backup
+  author: Luca Froeschke
+  description: Encrypted Restic backups to S3/S3-compatible storage with Docker and database support.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions: [bookworm, trixie]
+dependencies: []

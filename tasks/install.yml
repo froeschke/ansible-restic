@@ -1,0 +1,5 @@
+---
+- name: Install restic and optional packages
+  ansible.builtin.package:
+    name: "{{ [restic_package_name] + restic_extra_packages }}"
+    state: present

@@ -1,0 +1,22 @@
+---
+- name: Reload systemd for restic
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Restart changed restic timers
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: restarted
+  loop: "{{ restic_timer_templates.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - not ansible_check_mode
+    - item is changed
+    - restic_timer_enabled[item.item] | bool
+  vars:
+    restic_timer_enabled:
+      restic-backup.timer: "{{ restic_backup_timer_enabled }}"
+      restic-forget.timer: "{{ restic_forget_timer_enabled }}"
+      restic-check.timer: "{{ restic_check_timer_enabled }}"
